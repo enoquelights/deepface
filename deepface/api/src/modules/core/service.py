@@ -100,7 +100,42 @@ def find(
         logger.error(str(err))
         logger.error(tb_str)
         return {"error": f"Exception while verifying: {str(err)} - {tb_str}"}, 400
-
+def extract_faces(
+    img_path: Union[str, np.ndarray],
+    model_name: str,
+    detector_backend: str,
+    distance_metric: str,
+    enforce_detection: bool,
+    align: bool,
+    db_path: str,
+    color_face, str,
+    expand_percentage: int,
+    anti_spoofing: bool,
+    grayscale: bool,
+    normalization: str
+):
+    try:
+        obj = DeepFace.extract_faces(
+            img_path=img_path,            
+            model_name=model_name,
+            detector_backend=detector_backend,
+            normalization=normalization,
+            distance_metric=distance_metric,
+            expand_percentage=expand_percentage,
+            align=align,
+            db_path=db_path,
+            color_face=color_face,
+            enforce_detection=enforce_detection,
+            grayscale=grayscale,
+            anti_spoofing=anti_spoofing,
+        )
+        return obj
+    except Exception as err:
+        tb_str = traceback.format_exc()
+        logger.error(str(err))
+        logger.error(tb_str)
+        return {"error": f"Exception while extracting: {str(err)} - {tb_str}"}, 400
+        
 def analyze(
     img_path: Union[str, np.ndarray],
     actions: list,
