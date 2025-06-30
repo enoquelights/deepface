@@ -235,7 +235,7 @@ def analyze():
     )
 
     try:
-        img = extract_image_from_request("img")
+        img = extract_image_from_request("img_path")
     except Exception as err:
         return {"exception": str(err)}, 400
 
