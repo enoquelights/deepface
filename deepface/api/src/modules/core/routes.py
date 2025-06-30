@@ -171,7 +171,63 @@ def find():
         except TypeError as e:
             logger.error(f"Failed to jsonify object of type {type(finder)}: {str(e)}")
             return jsonify({"error": f"Cannot serialize object of type {type(finder)}"}), 500
+def make_json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(i) for i in obj]
+    elif hasattr(obj, 'tolist'):  # NumPy arrays
+        return obj.tolist()
+    elif hasattr(obj, '__dict__'):
+        return make_json_safe(vars(obj))
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        return str(obj)  # fallback for unknown types
+@blueprint.route("/extract_faces", methods=["POST"])
+def extract_faces():
+    input_args = (request.is_json and request.get_json()) or (
+        request.form and request.form.to_dict()
+    )
 
+    try:
+        img = extract_image_from_request("img_path")
+    except Exception as err:
+        return {"exception": str(err)}, 400
+
+    extracted = service.extract_faces(
+        img_path=img,       
+        detector_backend=input_args.get("detector_backend", "retinaface"),
+        align=input_args.get("align", True),
+        grayscale=input_args.get("grayscale", False),
+        color_face=input_args.get("color_face", "rgb"),
+        expand_percentage=input_args.get("expand_percentage", 0),
+        enforce_detection=input_args.get("enforce_detection", True),
+        anti_spoofing=input_args.get("anti_spoofing", False),
+    )
+
+    logger.debug(extracted)
+    
+    try:
+        if isinstance(extracted, pd.DataFrame):
+            return jsonify(make_json_safe(extracted.to_dict(orient="records")))
+
+        elif isinstance(extracted, list) and all(isinstance(df, pd.DataFrame) for df in extracted):
+            all_records = []
+            for df in extracted:
+                records = df.to_dict(orient="records")
+                all_records.extend(records)
+            return jsonify(make_json_safe(all_records))
+
+        elif isinstance(extracted, tuple):
+            return jsonify(make_json_safe(extracted[0])), extracted[1]
+
+        else:
+            return jsonify(make_json_safe(extracted))
+
+    except TypeError as e:
+        logger.error(f"Failed to jsonify object of type {type(extracted)}: {str(e)}")
+        return jsonify({"error": f"Cannot serialize object of type {type(extracted)}"}), 500
 @blueprint.route("/analyze", methods=["POST"])
 def analyze():
     input_args = (request.is_json and request.get_json()) or (
