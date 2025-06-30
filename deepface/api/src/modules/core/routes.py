@@ -126,7 +126,51 @@ def verify():
     logger.debug(verification)
 
     return verification
+@blueprint.route("/find", methods=["POST"])
+def find():
+    input_args = (request.is_json and request.get_json()) or (
+        request.form and request.form.to_dict()
+    )
 
+    try:
+        img = extract_image_from_request("img_path")
+    except Exception as err:
+        return {"exception": str(err)}, 400
+
+    finder = service.find(
+        img_path=img,
+        db_path=input_args.get("db_path", "/app/deepface/images/my_db"),
+        model_name=input_args.get("model_name", "ArcFace"),
+        detector_backend=input_args.get("detector_backend", "retinaface"),
+        distance_metric=input_args.get("distance_metric", "cosine"),
+        align=input_args.get("align", True),
+        enforce_detection=input_args.get("enforce_detection", True),
+        normalization=input_args.get("normalization", "ArcFace"),
+        anti_spoofing=input_args.get("anti_spoofing", False),
+    )
+
+    logger.debug(finder)
+    
+    if isinstance(finder, pd.DataFrame):
+        return jsonify(finder.to_dict(orient="records"))
+
+    elif isinstance(finder, list) and all(isinstance(df, pd.DataFrame) for df in finder):
+        # DeepFace may return a list of DataFrames
+        all_records = []
+        for df in finder:
+            records = df.to_dict(orient="records")
+            all_records.extend(records)  # Or append(records) if you want nested structure
+        return jsonify(all_records)
+
+    elif isinstance(finder, tuple):
+        return jsonify(finder[0]), finder[1]
+
+    else:
+        try:
+            return jsonify(finder)
+        except TypeError as e:
+            logger.error(f"Failed to jsonify object of type {type(finder)}: {str(e)}")
+            return jsonify({"error": f"Cannot serialize object of type {type(finder)}"}), 500
 
 @blueprint.route("/analyze", methods=["POST"])
 def analyze():
