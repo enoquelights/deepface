@@ -71,7 +71,35 @@ def verify(
         logger.error(str(err))
         logger.error(tb_str)
         return {"error": f"Exception while verifying: {str(err)} - {tb_str}"}, 400
-
+def find(
+    img_path: Union[str, np.ndarray],
+    model_name: str,
+    db_path: str,
+    detector_backend: str,
+    distance_metric: str,
+    enforce_detection: bool,
+    align: bool,
+    anti_spoofing: bool,
+    normalization: str
+):
+    try:
+        obj = DeepFace.find(
+            img_path=img_path,
+            db_path=db_path,
+            model_name=model_name,
+            detector_backend=detector_backend,
+            normalization=normalization,
+            distance_metric=distance_metric,
+            align=align,
+            enforce_detection=enforce_detection,
+            anti_spoofing=anti_spoofing,
+        )
+        return obj
+    except Exception as err:
+        tb_str = traceback.format_exc()
+        logger.error(str(err))
+        logger.error(tb_str)
+        return {"error": f"Exception while verifying: {str(err)} - {tb_str}"}, 400
 
 def analyze(
     img_path: Union[str, np.ndarray],
