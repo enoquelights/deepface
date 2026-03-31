@@ -329,7 +329,7 @@ def find():
     logger.debug(finder)
 
     if isinstance(finder, list) and not all(isinstance(df, pd.DataFrame) for df in finder):
-        return jsonify(finder)
+        return jsonify(make_json_safe(finder))
     elif isinstance(finder, pd.DataFrame):
         return jsonify(finder.to_dict(orient="records"))
     elif isinstance(finder, list) and all(isinstance(df, pd.DataFrame) for df in finder):
