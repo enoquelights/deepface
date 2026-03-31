@@ -2,9 +2,10 @@
 from typing import Union, cast, Any, Tuple, Dict
 
 # 3rd party dependencies
-from flask import Blueprint, request
+from flask import Blueprint, request, jsonify
 from numpy.typing import NDArray
-
+import pandas as pd
+import time
 # project dependencies
 from deepface import __version__
 from deepface.api.src.modules.core import service
@@ -302,3 +303,154 @@ def build_index() -> Tuple[Dict[str, Any], int]:
         database_type=variables.database_type,
         connection_details=variables.conection_details,
     )
+@blueprint.route("/find", methods=["POST"])
+def find():
+    input_args = (request.is_json and request.get_json()) or (
+        request.form and request.form.to_dict()
+    )
+
+    try:
+        img = extract_image_from_request("img_path")
+    except Exception as err:
+        return {"exception": str(err)}, 400
+
+    finder = service.find(
+        img_path=img,
+        db_path=input_args.get("db_path", "/app/deepface/images/my_db"),
+        model_name=input_args.get("model_name", "ArcFace"),
+        detector_backend=input_args.get("detector_backend", "retinaface"),
+        distance_metric=input_args.get("distance_metric", "cosine"),
+        align=input_args.get("align", True),
+        enforce_detection=input_args.get("enforce_detection", True),
+        normalization=input_args.get("normalization", "ArcFace"),
+        anti_spoofing=input_args.get("anti_spoofing", False),
+    )
+
+    logger.debug(finder)
+
+    if isinstance(finder, list) and not all(isinstance(df, pd.DataFrame) for df in finder):
+        return jsonify(finder)
+    elif isinstance(finder, pd.DataFrame):
+        return jsonify(finder.to_dict(orient="records"))
+    elif isinstance(finder, list) and all(isinstance(df, pd.DataFrame) for df in finder):
+        all_records = []
+        for df in finder:
+            records = df.to_dict(orient="records")
+            all_records.extend(records)
+        return jsonify(all_records)
+    elif isinstance(finder, tuple):
+        return jsonify(finder[0]), finder[1]
+    else:
+        try:
+            return jsonify(finder)
+        except TypeError as e:
+            logger.error(f"Failed to jsonify object of type {type(finder)}: {str(e)}")
+            return jsonify({"error": f"Cannot serialize object of type {type(finder)}"}), 500
+
+
+def make_json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(i) for i in obj]
+    elif hasattr(obj, 'tolist'):  # NumPy arrays
+        return obj.tolist()
+    elif hasattr(obj, '__dict__'):
+        return make_json_safe(vars(obj))
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        return str(obj)
+
+
+@blueprint.route("/extract_faces", methods=["POST"])
+def extract_faces():
+    input_args = (request.is_json and request.get_json()) or (
+        request.form and request.form.to_dict()
+    )
+
+    try:
+        img = extract_image_from_request("img_path")
+    except Exception as err:
+        return {"exception": str(err)}, 400
+
+    extracted = service.extract_faces(
+        img_path=img,
+        detector_backend=input_args.get("detector_backend", "retinaface"),
+        align=input_args.get("align", True),
+        grayscale=input_args.get("grayscale", False),
+        color_face=input_args.get("color_face", "rgb"),
+        expand_percentage=input_args.get("expand_percentage", 0),
+        enforce_detection=input_args.get("enforce_detection", True),
+        anti_spoofing=input_args.get("anti_spoofing", False),
+    )
+
+    logger.debug(extracted)
+
+    try:
+        if isinstance(extracted, pd.DataFrame):
+            return jsonify(make_json_safe(extracted.to_dict(orient="records")))
+        elif isinstance(extracted, list) and all(isinstance(df, pd.DataFrame) for df in extracted):
+            all_records = []
+            for df in extracted:
+                records = df.to_dict(orient="records")
+                all_records.extend(records)
+            return jsonify(make_json_safe(all_records))
+        elif isinstance(extracted, tuple):
+            return jsonify(make_json_safe(extracted[0])), extracted[1]
+        else:
+            return jsonify(make_json_safe(extracted))
+    except TypeError as e:
+        logger.error(f"Failed to jsonify object of type {type(extracted)}: {str(e)}")
+        return jsonify({"error": f"Cannot serialize object of type {type(extracted)}"}), 500
+@blueprint.route("/v1/vision/face/recognize", methods=["POST"])
+def deepstack_recognize():
+    start = time.time()
+    
+    try:
+        img = extract_image_from_request("image")  # DeepStack uses "image" not "img_path"
+    except Exception as err:
+        return jsonify({"success": False, "error": str(err)}), 400
+
+    finder = service.find(
+        img_path=img,
+        db_path="/app/deepface/images/my_db",
+        model_name="ArcFace",
+        detector_backend="retinaface",
+        distance_metric="cosine",
+        align=True,
+        enforce_detection=False,  # False so it returns empty rather than erroring on no face
+        normalization="ArcFace",
+        anti_spoofing=False,
+        threshold=0.4,
+    )
+
+    # Handle error tuple from service.find
+    if isinstance(finder, tuple):
+        return jsonify({"success": False, "error": finder[0].get("error")}), finder[1]
+
+    predictions = []
+    for r in finder:
+        if not isinstance(r, dict):
+            continue
+        bbox = r.get("bbox", [0, 0, 0, 0])
+        identity = r.get("identity", "unknown")
+        distance = r.get("distance", 1.0)
+        confidence = round(1 - distance, 4)
+
+        predictions.append({
+            "userid": identity,
+            "confidence": confidence,
+            "x_min": int(bbox[0]),
+            "y_min": int(bbox[1]),
+            "x_max": int(bbox[2]),
+            "y_max": int(bbox[3]),
+        })
+
+    elapsed = int((time.time() - start) * 1000)
+
+    return jsonify({
+        "success": True,
+        "predictions": predictions,
+        "duration": elapsed
+    })
