@@ -51,8 +51,8 @@ def _build_db_embeddings(db_path: str, force_rebuild: bool = False):
         needs_rebuild = any(
             os.path.getmtime(os.path.join(db_path, p, f)) > cache_mtime
             for p in os.listdir(db_path)
+            if os.path.isdir(os.path.join(db_path, p))  # guard here
             for f in os.listdir(os.path.join(db_path, p))
-            if os.path.isdir(os.path.join(db_path, p))
         )
         if not needs_rebuild:
             with open(cache_file, "rb") as f:
