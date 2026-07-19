@@ -454,3 +454,9 @@ def deepstack_recognize():
         "predictions": predictions,
         "duration": elapsed
     })
+@blueprint.route("/v1/vision/face", methods=["GET"])
+def deepstack_health():
+    return jsonify({"success": True})
+@blueprint.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
